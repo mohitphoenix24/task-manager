@@ -1,12 +1,14 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import morgan from "morgan";
 import { authRouter } from "./routes/auth";
 import { projectsRouter } from "./routes/projects";
 import { tasksRouter } from "./routes/tasks";
 
 const app = express();
 
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || true }));
 app.use(express.json());
 

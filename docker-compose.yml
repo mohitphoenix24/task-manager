@@ -1,12 +1,20 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   server:
     build:
       context: ./server
     restart: unless-stopped
+    logging: *default-logging
     environment:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN}
+      NODE_ENV: production
       PORT: 4000
     ports:
       - "127.0.0.1:4000:4000"
@@ -17,6 +25,7 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL}
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - server
     ports:
