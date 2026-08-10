@@ -5,7 +5,29 @@ on:
     branches: [master]
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build server
+        working-directory: server
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+
+      - name: Build client
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
