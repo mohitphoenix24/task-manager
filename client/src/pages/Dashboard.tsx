@@ -92,6 +92,8 @@ export function Dashboard() {
   function handleCardDragStart(e: DragEvent<HTMLDivElement>, taskId: string) {
     setDraggedTaskId(taskId);
     e.dataTransfer.effectAllowed = "move";
+    // Firefox refuses to start a native drag unless dataTransfer has data set.
+    e.dataTransfer.setData("text/plain", taskId);
   }
 
   function handleCardDragOver(e: DragEvent<HTMLDivElement>, status: TaskStatus, index: number) {
