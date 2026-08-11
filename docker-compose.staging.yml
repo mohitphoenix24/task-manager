@@ -19,7 +19,7 @@ services:
       - "127.0.0.1:4000:4000"
 
   client:
-    image: ghcr.io/mohitphoenix24/task-manager-client:prod-${IMAGE_TAG:-latest}
+    image: ghcr.io/mohitphoenix24/task-manager-client:staging-${IMAGE_TAG:-latest}
     restart: unless-stopped
     logging: *default-logging
     depends_on:

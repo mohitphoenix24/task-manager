@@ -1,0 +1,296 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [master, develop]
+
+env:
+  SERVER_IMAGE: ghcr.io/${{ github.repository_owner }}/task-manager-server
+  CLIENT_IMAGE: ghcr.io/${{ github.repository_owner }}/task-manager-client
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build server
+        working-directory: server
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+
+      - name: Build client
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
+  test-backend:
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: taskmanager
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: taskmanager_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://taskmanager:testpassword@localhost:5432/taskmanager_test
+      JWT_SECRET: test-secret
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install deps
+        working-directory: server
+        run: npm ci
+
+      - name: Apply migrations to the test database
+        working-directory: server
+        run: npx prisma migrate deploy
+
+      - name: Run backend test suite
+        working-directory: server
+        run: npm test
+
+  test-e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: taskmanager
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: taskmanager_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install and start server
+        working-directory: server
+        run: |
+          npm ci
+          npx prisma migrate deploy
+          npx ts-node-dev --transpile-only src/index.ts &
+          timeout 30 bash -c 'until curl -sf http://localhost:4000/health >/dev/null; do sleep 1; done'
+        env:
+          DATABASE_URL: postgresql://taskmanager:testpassword@localhost:5432/taskmanager_e2e
+          JWT_SECRET: e2e-secret
+          PORT: 4000
+          ALLOWED_ORIGIN: http://localhost:5173
+
+      - name: Install client deps and Playwright browsers
+        working-directory: client
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start client dev server
+        working-directory: client
+        run: |
+          npm run dev -- --port 5173 &
+          timeout 30 bash -c 'until curl -sf http://localhost:5173 >/dev/null; do sleep 1; done'
+        env:
+          VITE_API_URL: http://localhost:4000/api
+
+      - name: Run E2E tests
+        working-directory: client
+        run: npx playwright test
+        env:
+          E2E_BASE_URL: http://localhost:5173
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: client/playwright-report/
+          retention-days: 7
+
+  check-staging:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.STAGING_EC2_HOST }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Staging environment isn't provisioned yet (STAGING_EC2_HOST secret is missing) — see terraform/staging and README. Skipping staging build/deploy."
+          fi
+
+  push-server:
+    needs: [test-backend, test-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: true
+          tags: |
+            ${{ env.SERVER_IMAGE }}:latest
+            ${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  push-client-production:
+    needs: [test-backend, test-e2e]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push production client image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+          tags: |
+            ${{ env.CLIENT_IMAGE }}:prod-latest
+            ${{ env.CLIENT_IMAGE }}:prod-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  push-client-staging:
+    needs: [test-backend, test-e2e, check-staging]
+    if: github.ref == 'refs/heads/develop' && needs.check-staging.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push staging client image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.STAGING_VITE_API_URL }}
+          tags: |
+            ${{ env.CLIENT_IMAGE }}:staging-latest
+            ${{ env.CLIENT_IMAGE }}:staging-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-production:
+    needs: [push-server, push-client-production]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync compose file to EC2
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
+            docker-compose.prod.yml \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/taskmanager/docker-compose.yml"
+
+      - name: Pull images and restart containers
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" '
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            cd ~/taskmanager
+            export IMAGE_TAG="${{ github.sha }}"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+          '
+
+  deploy-staging:
+    needs: [push-server, push-client-staging, check-staging]
+    if: github.ref == 'refs/heads/develop' && needs.check-staging.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.STAGING_EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync compose file to EC2
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
+            docker-compose.staging.yml \
+            "${{ secrets.STAGING_EC2_USER }}@${{ secrets.STAGING_EC2_HOST }}:~/taskmanager/docker-compose.yml"
+
+      - name: Pull images and restart containers
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.STAGING_EC2_USER }}@${{ secrets.STAGING_EC2_HOST }}" '
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            cd ~/taskmanager
+            export IMAGE_TAG="${{ github.sha }}"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+          '
