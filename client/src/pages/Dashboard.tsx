@@ -111,9 +111,12 @@ export function Dashboard() {
 
   // Recomputes the drop index from live DOM positions rather than trusting
   // `dragOverIndex` state, which is set by `dragover` and can be stale if
-  // `drop` fires before React has flushed that update.
+  // `drop` fires before React has flushed that update. Skips the dragged
+  // card itself (kept mounted so the browser doesn't abort the native drag).
   function computeDropIndex(e: DragEvent<HTMLDivElement>, columnCount: number) {
-    const cards = e.currentTarget.querySelectorAll(".task-card");
+    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(".task-card")).filter(
+      (el) => el.dataset.taskId !== draggedTaskId
+    );
     for (let i = 0; i < cards.length; i++) {
       const rect = cards[i].getBoundingClientRect();
       if (e.clientY < rect.top + rect.height / 2) return i;
@@ -175,23 +178,20 @@ export function Dashboard() {
 
             <div className="kanban-board">
               {COLUMNS.map(({ status, label }) => {
-                const allInColumn = project.tasks.filter((t) => t.status === status);
-                const columnTasks =
-                  draggedTaskId && allInColumn.some((t) => t.id === draggedTaskId)
-                    ? allInColumn.filter((t) => t.id !== draggedTaskId)
-                    : allInColumn;
+                const tasks = project.tasks.filter((t) => t.status === status);
+                const otherCount = tasks.filter((t) => t.id !== draggedTaskId).length;
                 const showIndicatorAt = dragOverIndex?.status === status ? dragOverIndex.index : null;
 
                 return (
                   <div
                     key={status}
                     className="kanban-column"
-                    onDragOver={(e) => handleColumnDragOver(e, status, columnTasks.length)}
-                    onDrop={(e) => handleColumnDrop(e, status, columnTasks.length)}
+                    onDragOver={(e) => handleColumnDragOver(e, status, otherCount)}
+                    onDrop={(e) => handleColumnDrop(e, status, otherCount)}
                   >
                     <div className="kanban-column-header">
                       <span>{label}</span>
-                      <span className="kanban-count">{allInColumn.length}</span>
+                      <span className="kanban-count">{tasks.length}</span>
                     </div>
 
                     {status === "TODO" && (
@@ -214,22 +214,29 @@ export function Dashboard() {
                     )}
 
                     <div className="kanban-cards">
-                      {columnTasks.length === 0 && showIndicatorAt === null && (
-                        <p className="task-empty">No tasks.</p>
-                      )}
-                      {columnTasks.map((task, index) => (
-                        <div key={task.id}>
-                          {showIndicatorAt === index && <div className="drop-indicator" />}
-                          <TaskCard
-                            task={task}
-                            onOpen={() => setOpenTask(task)}
-                            onDragStart={(e) => handleCardDragStart(e, task.id)}
-                            onDragOverCard={(e) => handleCardDragOver(e, status, index)}
-                            onDragEnd={handleDragEnd}
-                          />
-                        </div>
-                      ))}
-                      {showIndicatorAt === columnTasks.length && <div className="drop-indicator" />}
+                      {tasks.length === 0 && <p className="task-empty">No tasks.</p>}
+                      {(() => {
+                        let otherIndex = 0;
+                        return tasks.map((task) => {
+                          const isDragged = task.id === draggedTaskId;
+                          const indexForDrag = otherIndex;
+                          if (!isDragged) otherIndex++;
+                          return (
+                            <div key={task.id}>
+                              {showIndicatorAt === indexForDrag && <div className="drop-indicator" />}
+                              <TaskCard
+                                task={task}
+                                dragging={isDragged}
+                                onOpen={() => setOpenTask(task)}
+                                onDragStart={(e) => handleCardDragStart(e, task.id)}
+                                onDragOverCard={(e) => handleCardDragOver(e, status, indexForDrag)}
+                                onDragEnd={handleDragEnd}
+                              />
+                            </div>
+                          );
+                        });
+                      })()}
+                      {showIndicatorAt === otherCount && <div className="drop-indicator" />}
                     </div>
                   </div>
                 );

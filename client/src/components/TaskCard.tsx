@@ -3,6 +3,7 @@ import type { Task } from "../api";
 
 interface Props {
   task: Task;
+  dragging: boolean;
   onOpen: () => void;
   onDragStart: (e: DragEvent<HTMLDivElement>) => void;
   onDragOverCard: (e: DragEvent<HTMLDivElement>) => void;
@@ -24,10 +25,11 @@ function formatDueDate(dueDate: string) {
   return new Date(dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function TaskCard({ task, onOpen, onDragStart, onDragOverCard, onDragEnd }: Props) {
+export function TaskCard({ task, dragging, onOpen, onDragStart, onDragOverCard, onDragEnd }: Props) {
   return (
     <div
-      className="task-card"
+      className={`task-card${dragging ? " task-card-dragging" : ""}`}
+      data-task-id={task.id}
       draggable
       onDragStart={onDragStart}
       onDragOver={onDragOverCard}
