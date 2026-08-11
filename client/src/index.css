@@ -66,13 +66,19 @@ a {
 }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.6rem 0.75rem;
+}
+
+textarea {
+  resize: vertical;
+  font-family: inherit;
 }
 
 input:focus-visible,
@@ -205,6 +211,10 @@ button:disabled {
   padding: 2rem 1.5rem 4rem;
 }
 
+.app-shell.dashboard {
+  max-width: 1100px;
+}
+
 .dashboard header {
   display: flex;
   justify-content: space-between;
@@ -260,70 +270,253 @@ button:disabled {
   font-size: 1.1rem;
 }
 
-.task-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.task-list li {
-  display: flex;
-  gap: 0.6rem;
-  align-items: center;
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.task-list li:last-child {
-  border-bottom: none;
-}
-
-.task-list li span {
-  flex: 1;
-}
-
 .task-empty {
   color: var(--text-muted);
   font-size: 0.9rem;
   padding: 0.5rem 0;
 }
 
-.status-select {
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.3rem 0.5rem;
-  border-radius: 999px;
-  border-width: 1px;
-  appearance: none;
-  -webkit-appearance: none;
-  text-align: center;
-  cursor: pointer;
-}
-
-.status-select[data-status="TODO"] {
-  background: var(--border);
-  color: var(--text-muted);
-  border-color: var(--border);
-}
-
-.status-select[data-status="IN_PROGRESS"] {
-  background: var(--warning-soft);
-  color: var(--warning);
-  border-color: var(--warning-soft);
-}
-
-.status-select[data-status="DONE"] {
-  background: var(--success-soft);
-  color: var(--success);
-  border-color: var(--success-soft);
-}
-
 .new-task-form {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.85rem;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
 }
 
 .new-task-form input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 720px) {
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kanban-column {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  min-height: 80px;
+}
+
+.kanban-column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+}
+
+.kanban-count {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.kanban-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 20px;
+}
+
+.task-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.65rem 0.75rem;
+  cursor: grab;
+}
+
+.task-card:active {
+  cursor: grabbing;
+}
+
+.task-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.task-card-title {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.priority-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.priority-low {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.priority-medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.priority-high {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.due-badge {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.due-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.comment-count {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.drop-indicator {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--primary);
+  margin: 0 0.1rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 10, 30, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.modal-header h2 {
+  font-size: 1.15rem;
+}
+
+.task-detail-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.task-detail-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.task-detail-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.task-detail-row label {
+  flex: 1;
+}
+
+.task-detail-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.comments-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.comments-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.comment-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.comment-list li {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+}
+
+.comment-list p {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.comment-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.new-comment-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.new-comment-form input {
   flex: 1;
 }
